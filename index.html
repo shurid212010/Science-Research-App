@@ -1,38 +1,449 @@
 <!DOCTYPE html>
 <html lang="bn">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>বিজ্ঞান পাঠাগার ও গবেষণাগার</title>
-
-<link rel="manifest" href="manifest.json">
-<link rel="icon" href="icon-192.png">
-<meta name="theme-color" content="#0F1320">
-
-<link rel="stylesheet" href="style.css">
-
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;700&display=swap" rel="stylesheet">
-
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0F1320" />
+<link rel="icon" href="icon-192.png" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@500;700&family=Noto+Sans+Bengali:wght@400;500&family=JetBrains+Mono:wght@400;600&display=swap" />
 <script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { margin: 0; background: #0F1320; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: #2A3145; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
 
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-</head>
 
-<body>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect } = React;
 
-<div id="root"></div>
+const PALETTE = {
+  bg: "#0F1320", panel: "#1A2032", panelAlt: "#151A29",
+  accent: "#7FE8C8", accent2: "#E8A33D", text: "#EDEFF3",
+  muted: "#8B93A9", line: "#2A3145",
+};
 
-<script type="text/babel" src="app.js"></script>
+const ICON = { topics: "📖", notes: "🧪", ai: "💬", papers: "🔎", globe: "🌐", trash: "🗑", link: "↗", close: "✕", settings: "⚙" };
 
-<script>
-if("serviceWorker" in navigator){
-window.addEventListener("load",()=>{
-navigator.serviceWorker.register("./sw.js");
-});
+function getKey() { return localStorage.getItem("science-app:api-key") || ""; }
+function setKey(k) { localStorage.setItem("science-app:api-key", k); }
+
+async function callClaude({ system, message, useWebSearch }) {
+  const key = getKey();
+  if (!key) throw new Error("no-api-key");
+  const body = {
+    model: "claude-sonnet-4-6",
+    max_tokens: useWebSearch ? 800 : 1000,
+    system,
+    messages: [{ role: "user", content: message }],
+  };
+  if (useWebSearch) body.tools = [{ type: "web_search_20250305", name: "web_search" }];
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`api-http-${res.status}: ${errText.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  return (data.content || []).map((b) => (b.type === "text" ? b.text : "")).filter(Boolean).join("\n");
 }
+
+const DEFAULT_TOPICS = [
+  { id: "physics", title: "পদার্থবিজ্ঞান", subs: [
+    { title: "নিউটনের গতিসূত্র", body: "প্রথম সূত্র বলে, বাইরের বল প্রয়োগ না করলে কোনো বস্তু তার স্থির বা সমবেগ অবস্থা বজায় রাখে। দ্বিতীয় সূত্র অনুযায়ী বলের পরিমাণ ভরবেগের পরিবর্তনের হারের সমান (F = ma)। তৃতীয় সূত্র বলে প্রতিটি ক্রিয়ার সমান ও বিপরীত প্রতিক্রিয়া থাকে." },
+    { title: "কোয়ান্টাম বলবিদ্যা", body: "অতি ক্ষুদ্র কণার আচরণ ব্যাখ্যা করে এই শাখা। কণা একইসাথে তরঙ্গ ও কণা উভয় ধর্ম প্রদর্শন করতে পারে, এবং হাইজেনবার্গের অনিশ্চয়তা নীতি অনুযায়ী কোনো কণার অবস্থান ও ভরবেগ একসাথে নির্দিষ্টভাবে জানা সম্ভব নয়." },
+  ]},
+  { id: "chemistry", title: "রসায়ন", subs: [
+    { title: "পর্যায় সারণি", body: "মৌলগুলোকে পারমাণবিক সংখ্যা অনুযায়ী সাজিয়ে তৈরি একটি কাঠামো, যেখানে একই ধর্মের মৌলগুলো একই কলামে অবস্থান করে." },
+    { title: "রাসায়নিক বন্ধন", body: "পরমাণুগুলো ইলেকট্রন ভাগাভাগি বা স্থানান্তরের মাধ্যমে যুক্ত হয়ে অণু গঠন করে। প্রধান তিন ধরনের বন্ধন হলো আয়নিক, সমযোজী এবং ধাতব বন্ধন." },
+  ]},
+  { id: "biology", title: "জীববিজ্ঞান", subs: [
+    { title: "কোষ তত্ত্ব", body: "সকল জীব এক বা একাধিক কোষ দ্বারা গঠিত, এবং কোষই জীবনের মৌলিক গঠনগত ও কার্যকরী একক." },
+    { title: "বিবর্তন ও প্রাকৃতিক নির্বাচন", body: "প্রজাতির মধ্যে বংশগত বৈশিষ্ট্যের পরিবর্তন সময়ের সাথে জমা হয়ে নতুন প্রজাতির উদ্ভব ঘটায়." },
+  ]},
+  { id: "astronomy", title: "জ্যোতির্বিজ্ঞান", subs: [
+    { title: "নক্ষত্রের জীবনচক্র", body: "গ্যাস ও ধূলিকণার মেঘ থেকে মহাকর্ষীয় সংকোচনের মাধ্যমে নক্ষত্রের জন্ম হয়, যা শেষে শ্বেত বামন, নিউট্রন তারা বা কৃষ্ণগহ্বরে পরিণত হতে পারে." },
+  ]},
+  { id: "earth", title: "পৃথিবী বিজ্ঞান", subs: [
+    { title: "প্লেট টেকটোনিক্স", body: "পৃথিবীর বহিঃস্তর কয়েকটি পাতে বিভক্ত, যেগুলোর সঞ্চরণে ভূমিকম্প, আগ্নেয়গিরির অগ্ন্যুৎপাত ও পর্বতমালার সৃষ্টি হয়." },
+  ]},
+];
+
+function SettingsModal({ onClose }) {
+  const [val, setVal] = useState(getKey());
+  return (
+    <div style={{ background: "rgba(0,0,0,0.6)" }} className="fixed inset-0 flex items-center justify-center z-50 p-4">
+      <div style={{ background: PALETTE.panel, border: `1px solid ${PALETTE.line}` }} className="rounded-md p-5 w-full max-w-sm">
+        <div className="flex items-center justify-between mb-3">
+          <span style={{ color: PALETTE.text, fontFamily: "'Noto Serif Bengali', serif" }} className="font-medium">API Key সেটিংস</span>
+          <button onClick={onClose} style={{ color: PALETTE.muted }}>{ICON.close}</button>
+        </div>
+        <p style={{ color: PALETTE.muted, fontFamily: "'Noto Sans Bengali', sans-serif" }} className="text-xs mb-2">
+          console.anthropic.com থেকে আপনার নিজের API key নিয়ে এখানে বসান। এটি শুধু আপনার ফোনে (localStorage) সংরক্ষিত থাকবে, কোথাও পাঠানো হবে না।
+        </p>
+        <input
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          placeholder="sk-ant-..."
+          style={{ background: PALETTE.panelAlt, color: PALETTE.text, border: `1px solid ${PALETTE.line}`, fontFamily: "'JetBrains Mono', monospace" }}
+          className="w-full rounded px-3 py-2 text-xs outline-none mb-3"
+        />
+        <button
+          onClick={() => { setKey(val.trim()); onClose(); }}
+          style={{ background: PALETTE.accent, color: "#0F1320" }}
+          className="w-full rounded px-3 py-2 text-sm font-medium"
+        >সংরক্ষণ করুন</button>
+      </div>
+    </div>
+  );
+}
+
+function TopicsPanel({ openSettings }) {
+  const [topics, setTopics] = useState(DEFAULT_TOPICS);
+  const [openId, setOpenId] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newBody, setNewBody] = useState("");
+  const [webQuery, setWebQuery] = useState("");
+  const [webLoading, setWebLoading] = useState(false);
+  const [webError, setWebError] = useState("");
+  const [webStatus, setWebStatus] = useState("");
+
+  useEffect(() => {
+    const raw = localStorage.getItem("science-app:custom-topics");
+    if (raw) { try { setTopics([...DEFAULT_TOPICS, ...JSON.parse(raw)]); } catch (e) {} }
+  }, []);
+
+  const saveCustom = (list) => localStorage.setItem("science-app:custom-topics", JSON.stringify(list));
+
+  const addTopic = () => {
+    if (!newTitle.trim() || !newBody.trim()) return;
+    const custom = topics.filter((t) => !DEFAULT_TOPICS.find((d) => d.id === t.id));
+    const entry = { id: `custom-${Date.now()}`, title: newTitle.trim(), subs: [{ title: "সংযোজিত নোট", body: newBody.trim() }] };
+    const updated = [...custom, entry];
+    setTopics([...DEFAULT_TOPICS, ...updated]);
+    saveCustom(updated);
+    setNewTitle(""); setNewBody(""); setAdding(false);
+  };
+
+  const removeCustomTopic = (id) => {
+    const custom = topics.filter((t) => !DEFAULT_TOPICS.find((d) => d.id === t.id) && t.id !== id);
+    setTopics([...DEFAULT_TOPICS, ...custom]);
+    saveCustom(custom);
+  };
+
+  const fetchFromWeb = async () => {
+    if (!webQuery.trim() || webLoading) return;
+    if (!getKey()) { setWebError("প্রথমে সেটিংসে গিয়ে আপনার API key বসান।"); return; }
+    setWebLoading(true); setWebError(""); setWebStatus("ইন্টারনেটে খোঁজা হচ্ছে...");
+    try {
+      const text = await callClaude({
+        useWebSearch: true,
+        system: 'তুমি একজন বিজ্ঞান সম্পাদক। ব্যবহারকারীর দেওয়া বিষয়ে ইন্টারনেটে সার্চ করে সবচেয়ে গুরুত্বপূর্ণ ও যাচাইযোগ্য তথ্য বের করো, নিজের ভাষায় ৩-৪ বাক্যে বাংলায় সংক্ষিপ্ত করো। শেষ বার্তায় শুধু এই JSON দাও, অন্য কোনো টেক্সট ছাড়া: {"title": "শিরোনাম", "summary": "সংক্ষিপ্তসার"}',
+        message: `এই বিষয়ে সার্চ করে গুরুত্বপূর্ণ তথ্য দাও: ${webQuery.trim()}`,
+      });
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("no-json");
+      const parsed = JSON.parse(jsonMatch[0]);
+      const entry = { id: `web-${Date.now()}`, title: parsed.title || webQuery.trim(), subs: [{ title: "স্বয়ংক্রিয়ভাবে সংগৃহীত (ওয়েব সার্চ)", body: parsed.summary }] };
+      const custom = topics.filter((t) => !DEFAULT_TOPICS.find((d) => d.id === t.id));
+      const updated = [...custom, entry];
+      setTopics([...DEFAULT_TOPICS, ...updated]);
+      saveCustom(updated);
+      setWebQuery(""); setWebStatus("যোগ করা হয়েছে ✓");
+      setTimeout(() => setWebStatus(""), 2500);
+    } catch (e) {
+      console.error(e);
+      setWebError(e.message === "no-api-key" ? "প্রথমে সেটিংসে গিয়ে API key বসান।" : "তথ্য আনতে সমস্যা হয়েছে। আবার চেষ্টা করুন।");
+      setWebStatus("");
+    } finally { setWebLoading(false); }
+  };
+
+  return (
+    <div className="px-4 py-4 space-y-3">
+      {topics.map((topic, idx) => {
+        const isCustom = !DEFAULT_TOPICS.find((d) => d.id === topic.id);
+        const open = openId === topic.id;
+        return (
+          <div key={topic.id} style={{ background: PALETTE.panel, border: `1px solid ${PALETTE.line}` }} className="rounded-md overflow-hidden">
+            <button onClick={() => setOpenId(open ? null : topic.id)} className="w-full flex items-center justify-between px-4 py-3">
+              <span className="flex items-center gap-3">
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", color: PALETTE.accent }} className="text-[11px]">{String(idx + 1).padStart(2, "0")}</span>
+                <span style={{ fontFamily: "'Noto Serif Bengali', serif", color: PALETTE.text }} className="text-[15px] font-medium">{topic.title}</span>
+                {isCustom && <span style={{ color: PALETTE.accent2, borderColor: PALETTE.accent2 }} className="text-[10px] border rounded px-1.5 py-0.5">সংযোজিত</span>}
+              </span>
+              <span style={{ color: PALETTE.muted }} className="text-lg leading-none">{open ? "−" : "+"}</span>
+            </button>
+            {open && (
+              <div className="px-4 pb-4 space-y-3" style={{ borderTop: `1px solid ${PALETTE.line}` }}>
+                {topic.subs.map((sub, i) => (
+                  <div key={i} className="pt-3">
+                    <div style={{ color: PALETTE.accent, fontFamily: "'Noto Sans Bengali', sans-serif" }} className="text-sm font-medium mb-1">{sub.title}</div>
+                    <p style={{ color: PALETTE.muted, fontFamily: "'Noto Sans Bengali', sans-serif" }} className="text-sm leading-relaxed">{sub.body}</p>
+                  </div>
+                ))}
+                {isCustom && <button onClick={() => removeCustomTopic(topic.id)} style={{ color: "#E8756A" }} className="flex items-center gap-1 text-xs mt-1">{ICON.trash} মুছে ফেলুন</button>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      <div style={{ background: PALETTE.panelAlt, border: `1px solid ${PALETTE.accent}` }} className="rounded-md p-4 space-y-2">
+        <div className="flex items-center gap-2 mb-1">
+          <span>{ICON.globe}</span>
+          <span style={{ color: PALETTE.accent, fontFamily: "'Noto Sans Bengali', sans-serif" }} className="text-sm font-medium">স্বয়ংক্রিয় গবেষণা</span>
+        </div>
+        <p style={{ color: PALETTE.muted, fontFamily: "'Noto Sans Bengali', sans-serif" }} className="text-xs">একটা বিষয়ের নাম লিখুন — এটি ইন্টারনেটে সার্চ করে গুরুত্বপূর্ণ তথ্য তালিকায় যোগ করবে।</p>
+        <div className="flex gap-2">
+          <input value={webQuery} onChange={(e) => setWebQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && fetchFromWeb()}
+            placeholder="যেমন: ব্ল্যাক হোল, DNA"
+            style={{ background: PALETTE.panel, color: PALETTE.text, border: `1px solid ${PALETTE.line}`, fontFamily: "'Noto Sans Bengali', sans-serif" }}
+            className="flex-1 rounded px-3 py-2 text-sm outline-none" />
+          <button onClick={fetchFromWeb} disabled={webLoading} style={{ background: PALETTE.accent, color: "#0F1320" }} className="rounded px-3 text-sm font-medium disabled:opacity-50 shrink-0">
+            {webLoading ? "..." : "আনুন"}
+          </button>
+        </div>
+        {webStatus && <div style={{ color: PALETTE.accent2, fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px]">{webStatus}</div>}
+        {webError && <div style={{ color: "#E8756A" }} className="text-xs">{webError}</div>}
+      </div>
+
+      {adding ? (
+        <div style={{ background: PALETTE.panel, border: `1px solid ${PALETTE.accent}` }} className="rounded-md p-4 space-y-2">
+          <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="বিষয়ের নাম"
+            style={{ background: PALETTE.panelAlt, color: PALETTE.text, border: `1px solid ${PALETTE.line}`, fontFamily: "'Noto Sans Bengali', sans-serif" }}
+            className="w-full rounded px-3 py-2 text-sm outline-none" />
+          <textarea value={newBody} onChange={(e) => setNewBody(e.target.value)} placeholder="বিস্তারিত লিখুন..." rows={4}
+            style={{ background: PALETTE.panelAlt, color: PALETTE.text, border: `1px solid ${PALETTE.line}`, fontFamily: "'Noto Sans Bengali', sans-serif" }}
+            className="w-full rounded px-3 py-2 text-sm outline-none resize-none" />
+          <div className="flex gap-2">
+            <button onClick={addTopic} style={{ background: PALETTE.accent, color: "#0F1320" }} className="text-sm font-medium rounded px-3 py-1.5">সংরক্ষণ করুন</button>
+            <button onClick={() => setAdding(false)} style={{ color: PALETTE.muted }} className="text-sm px-3 py-1.5">বাতিল</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setAdding(true)} style={{ borderColor: PALETTE.line, color: PALETTE.accent }} className="w-full flex items-center justify-center gap-2 border border-dashed rounded-md py-3 text-sm">
+          + নিজের বিষয় যোগ করুন
+        </button>
+      )}
+    </div>
+  );
+}
+
+function NotesPanel() {
+  const [notes, setNotes] = useState([]);
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+
+  useEffect(() => {
+    const raw = localStorage.getItem("science-app:notes");
+    if (raw) { try { setNotes(JSON.parse(raw)); } catch (e) {} }
+  }, []);
+
+  const persist = (list) => localStorage.setItem("science-app:notes", JSON.stringify(list));
+
+  const addNote = () => {
+    if (!title.trim() || !body.trim()) return;
+    const entry = { id: Date.now(), title: title.trim(), body: body.trim(), date: new Date().toLocaleDateString("bn-BD") };
+    const updated = [entry, ...notes];
+    setNotes(updated); persist(updated);
+    setTitle(""); setBody("");
+  };
+
+  const deleteNote = (id) => {
+    const updated = notes.filter((n) => n.id !== id);
+    setNotes(updated); persist(updated);
+  };
+
+  return (
+    <div className="px-4 py-4 space-y-4">
+      <div style={{ background: PALETTE.panel, border: `1px solid ${PALETTE.line}` }} className="rounded-md p-4 space-y-2">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="নোটের শিরোনাম"
+          style={{ background: PALETTE.panelAlt, color: PALETTE.text, border: `1px solid ${PALETTE.line}`, fontFamily: "'Noto Sans Bengali', sans-serif" }}
+          className="w-full rounded px-3 py-2 text-sm outline-none" />
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="গবেষণার পর্যবেক্ষণ, ফলাফল বা চিন্তা লিখুন..." rows={4}
+          style={{ background: PALETTE.panelAlt, color: PALETTE.text, border: `1px solid ${PALETTE.line}`, fontFamily: "'Noto Sans Bengali', sans-serif" }}
+          className="w-full rounded px-3 py-2 text-sm outline-none resize-none" />
+        <button onClick={addNote} style={{ background: PALETTE.accent, color: "#0F1320" }} className="text-sm font-medium rounded px-3 py-1.5">নোট যোগ করুন</button>
+      </div>
+      {notes.length === 0 && <div style={{ color: PALETTE.muted, fontFamily: "'Noto Sans Bengali', sans-serif" }} className="text-sm text-center py-6">এখনো কোনো নোট নেই।</div>}
+      <div className="space-y-2">
+        {notes.map((n) => (
+          <div key={n.id} style={{ background: PALETTE.panel, border: `1px solid ${PALETTE.line}`, borderLeft: `3px solid ${PALETTE.accent2}` }} className="rounded-md p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div style={{ color: PALETTE.text, fontFamily: "'Noto Serif Bengali', serif" }} className="text-sm font-medium">{n.title}</div>
+              <button onClick={() => deleteNote(n.id)} style={{ color: PALETTE.muted }}>{ICON.trash}</button>
+            </div>
+            <p style={{ color: PALETTE.muted, fontFamily: "'Noto Sans Bengali', sans-serif" }} className="text-sm mt-1 leading-relaxed">{n.body}</p>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", color: PALETTE.accent }} className="text-[10px] mt-2">{n.date}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AiPanel() {
+  const [question, setQuestion] = useState("");
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const ask = async () => {
+    if (!question.trim() || loading) return;
+    if (!getKey()) { setError("প্রথমে সেটিংসে গিয়ে API key বসান।"); return; }
+    const q = question.trim();
+    setMessages((m) => [...m, { role: "user", text: q }]);
+    setQuestion(""); setLoading(true); setError("");
+    try {
+      const text = await callClaude({
+        system: "তুমি একজন বিজ্ঞান শিক্ষক ও গবেষণা সহকারী। সবসময় বাংলায় স্পষ্ট, সঠিক ও সংক্ষিপ্ত উত্তর দাও।",
+        message: q,
+      });
+      setMessages((m) => [...m, { role: "assistant", text: text || "কোনো উত্তর পাওয়া যায়নি।" }]);
+    } catch (e) {
+      setError("উত্তর আনতে সমস্যা হয়েছে। আবার চেষ্টা করুন।");
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="px-4 py-4 flex flex-col h-full">
+      <div className="flex-1 space-y-3 mb-3 overflow-y-auto" style={{ maxHeight: "60vh" }}>
+        {messages.length === 0 && <div style={{ color: PALETTE.muted, fontFamily: "'Noto Sans Bengali', sans-serif" }} className="text-sm text-center py-8">বিজ্ঞান সম্পর্কে যেকোনো প্রশ্ন করুন।</div>}
+        {messages.map((m, i) => (
+          <div key={i} style={{ background: m.role === "user" ? PALETTE.panelAlt : PALETTE.panel, border: `1px solid ${PALETTE.line}`, marginLeft: m.role === "user" ? "20%" : 0, marginRight: m.role === "user" ? 0 : "20%" }} className="rounded-md p-3">
+            <div style={{ color: m.role === "user" ? PALETTE.accent2 : PALETTE.accent, fontFamily: "'JetBrains Mono', monospace" }} className="text-[10px] mb-1 tracking-widest">{m.role === "user" ? "প্রশ্ন" : "উত্তর"}</div>
+            <div style={{ color: PALETTE.text, fontFamily: "'Noto Sans Bengali', sans-serif" }} className="text-sm leading-relaxed whitespace-pre-wrap">{m.text}</div>
+          </div>
+        ))}
+        {loading && <div style={{ color: PALETTE.muted }} className="text-sm px-1">উত্তর তৈরি হচ্ছে...</div>}
+        {error && <div style={{ color: "#E8756A" }} className="text-sm">{error}</div>}
+      </div>
+      <div className="flex gap-2">
+        <input value={question} onChange={(e) => setQuestion(e.target.value)} onKeyDown={(e) => e.key === "Enter" && ask()} placeholder="আপনার প্রশ্ন লিখুন..."
+          style={{ background: PALETTE.panelAlt, color: PALETTE.text, border: `1px solid ${PALETTE.line}`, fontFamily: "'Noto Sans Bengali', sans-serif" }}
+          className="flex-1 rounded px-3 py-2.5 text-sm outline-none" />
+        <button onClick={ask} disabled={loading} style={{ background: PALETTE.accent, color: "#0F1320" }} className="rounded px-4 text-sm font-medium disabled:opacity-50">পাঠান</button>
+      </div>
+    </div>
+  );
+}
+
+function PapersPanel() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [searched, setSearched] = useState(false);
+
+  const search = async () => {
+    if (!query.trim() || loading) return;
+    setLoading(true); setError(""); setSearched(true);
+    try {
+      const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(query.trim())}&limit=10&fields=title,authors,year,venue,abstract,citationCount,url`;
+      const response = await fetch(url);
+      const data = await response.json();
+      setResults(data.data || []);
+    } catch (e) {
+      setError("পেপার খুঁজতে সমস্যা হয়েছে।"); setResults([]);
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="px-4 py-4 space-y-3">
+      <div className="flex gap-2">
+        <input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()} placeholder="যেমন: photosynthesis efficiency"
+          style={{ background: PALETTE.panelAlt, color: PALETTE.text, border: `1px solid ${PALETTE.line}`, fontFamily: "'Noto Sans Bengali', sans-serif" }}
+          className="flex-1 rounded px-3 py-2.5 text-sm outline-none" />
+        <button onClick={search} disabled={loading} style={{ background: PALETTE.accent, color: "#0F1320" }} className="rounded px-4 text-sm font-medium disabled:opacity-50">{ICON.papers} খুঁজুন</button>
+      </div>
+      {error && <div style={{ color: "#E8756A" }} className="text-sm">{error}</div>}
+      {searched && !loading && results.length === 0 && !error && <div style={{ color: PALETTE.muted, fontFamily: "'Noto Sans Bengali', sans-serif" }} className="text-sm text-center py-6">কোনো ফলাফল পাওয়া যায়নি।</div>}
+      <div className="space-y-2">
+        {results.map((p, i) => (
+          <div key={p.paperId || i} style={{ background: PALETTE.panel, border: `1px solid ${PALETTE.line}` }} className="rounded-md p-3">
+            <div style={{ color: PALETTE.text, fontFamily: "'Noto Serif Bengali', serif" }} className="text-sm font-medium">{p.title}</div>
+            <div style={{ color: PALETTE.muted, fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] mt-1">
+              {(p.authors || []).slice(0, 3).map((a) => a.name).join(", ")}{p.authors && p.authors.length > 3 ? " et al." : ""} · {p.year || "—"} · উদ্ধৃতি {p.citationCount ?? 0}
+            </div>
+            {p.abstract && <p style={{ color: PALETTE.muted, fontFamily: "'Noto Sans Bengali', sans-serif" }} className="text-xs mt-2 leading-relaxed">{p.abstract.slice(0, 220)}{p.abstract.length > 220 ? "…" : ""}</p>}
+            {p.url && <a href={p.url} target="_blank" rel="noreferrer" style={{ color: PALETTE.accent2 }} className="inline-flex items-center gap-1 text-xs mt-2">মূল পেপার দেখুন {ICON.link}</a>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const TABS = [
+  { id: "topics", code: "K-১", label: "বিষয়াবলী", icon: ICON.topics },
+  { id: "notes", code: "K-২", label: "নোট খাতা", icon: ICON.notes },
+  { id: "ai", code: "K-৩", label: "AI প্রশ্নোত্তর", icon: ICON.ai },
+  { id: "papers", code: "K-৪", label: "পেপার সার্চ", icon: ICON.papers },
+];
+
+function App() {
+  const [tab, setTab] = useState("topics");
+  const [showSettings, setShowSettings] = useState(false);
+
+  return (
+    <div style={{ background: PALETTE.bg, minHeight: "100vh" }} className="w-full flex flex-col">
+      <div style={{ borderBottom: `1px solid ${PALETTE.line}` }} className="px-4 pt-5 pb-3 flex items-start justify-between">
+        <div>
+          <div style={{ fontFamily: "'JetBrains Mono', monospace", color: PALETTE.accent }} className="text-[10px] tracking-[0.2em] mb-1">ক্যাটালগ №０７０６</div>
+          <h1 style={{ fontFamily: "'Noto Serif Bengali', serif", color: PALETTE.text }} className="text-xl font-bold">বিজ্ঞান পাঠাগার ও গবেষণাগার</h1>
+          <p style={{ color: PALETTE.muted, fontFamily: "'Noto Sans Bengali', sans-serif" }} className="text-xs mt-1">বিষয়ভিত্তিক জ্ঞান, নোট, প্রশ্নোত্তর ও পেপার সন্ধান</p>
+        </div>
+        <button onClick={() => setShowSettings(true)} style={{ color: PALETTE.muted }} className="text-lg mt-1">{ICON.settings}</button>
+      </div>
+      <div style={{ borderBottom: `1px solid ${PALETTE.line}` }} className="flex overflow-x-auto">
+        {TABS.map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ background: tab === t.id ? PALETTE.panel : "transparent", borderBottom: tab === t.id ? `2px solid ${PALETTE.accent}` : "2px solid transparent", color: tab === t.id ? PALETTE.text : PALETTE.muted }}
+            className="flex flex-col items-center gap-1 px-3 py-2.5 shrink-0 transition-colors">
+            <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10px] tracking-widest">{t.code}</span>
+            <span>{t.icon}</span>
+            <span className="text-xs whitespace-nowrap" style={{ fontFamily: "'Noto Sans Bengali', sans-serif" }}>{t.label}</span>
+          </button>
+        ))}
+      </div>
+      <div className="flex-1">
+        {tab === "topics" && <TopicsPanel />}
+        {tab === "notes" && <NotesPanel />}
+        {tab === "ai" && <AiPanel />}
+        {tab === "papers" && <PapersPanel />}
+      </div>
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+</script>
 </body>
 </html>
